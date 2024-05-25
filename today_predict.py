@@ -41,9 +41,9 @@ with open(input_file, mode='r', newline='') as infile:
             'Predictions',
             transform_tips(tips),
             odds_tips,
-            result,
-            '',
-            'new'
+            '-',
+            '-',
+            'now'
         ]
         new_data.append(new_row)
 
