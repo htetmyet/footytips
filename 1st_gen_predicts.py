@@ -12,7 +12,7 @@ def get_current_datetime_on_api_server():
     return london_time
 
 def to_local_datetime(start_date):
-    dt = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S")
+    dt = datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
     return api_tz.localize(dt).astimezone(local_tz)
 
 if __name__ == "__main__":
