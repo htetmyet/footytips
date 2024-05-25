@@ -44,7 +44,7 @@ if __name__ == "__main__":
             json["data"].sort(key=lambda p: p["start_date"])
 
             for match in json["data"]:
-                output = "{st} {m_id} {league}\t{ht} vs {at}\t{p} @ {odd} \t{m_stat} {m_res}"
+                output = "{m_id} {st} {league}\t{ht} vs {at}\t{p} @ {odd} \t{m_stat} {m_res}"
 
                 local_start_time = to_local_datetime(match["start_date"])
                 match_id = match["id"]
@@ -57,7 +57,7 @@ if __name__ == "__main__":
                 match_result = match["result"]
 
 
-                print(output.format(st=local_start_time, m_id=match_id, league=league,ht=home_team, at=away_team, p=prediction, odd=prediction_odds, m_stat=match_status, m_res=match_result))
+                print(output.format(m_id=match_id, st=local_start_time, league=league,ht=home_team, at=away_team, p=prediction, odd=prediction_odds, m_stat=match_status, m_res=match_result))
         else:
             print("No data found in the response.")
     else:
