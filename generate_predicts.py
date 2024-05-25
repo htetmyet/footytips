@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import requests
 import pytz
+import csv
 
 api_tz = pytz.timezone("Asia/Bangkok")
 local_tz = pytz.timezone("Asia/Bangkok")
@@ -16,11 +17,11 @@ def to_local_datetime(start_date):
 
 if __name__ == "__main__":
     current_server_time = get_current_datetime_on_api_server()
-    today = current_server_time.date() + timedelta(days=0)
+    today = current_server_time.date()
 
     headers = {
         'User-Agent': 'python_requests',
-        'X-RapidAPI-Key': os.environ.get('RAPIDAPI_KEY')  # Ensure this matches your environment variable name
+        'X-RapidAPI-Key': os.environ.get('RAPIDAPI_KEY')
     }
 
     if not headers['X-RapidAPI-Key']:
@@ -31,7 +32,7 @@ if __name__ == "__main__":
 
     params = {
         "iso_date": today.isoformat(),
-        #"federation": "UEFA",
+        "federation": "UEFA",
         "market": "classic"
     }
 
@@ -43,21 +44,22 @@ if __name__ == "__main__":
         if 'data' in json:
             json["data"].sort(key=lambda p: p["start_date"])
 
-            for match in json["data"]:
-                output = "{m_id} {st} {league}\t{ht} vs {at}\t{p} @ {odd} \t{m_stat} {m_res}"
+            with open('tmp_fix.csv', mode='w', newline='') as file:
+                writer = csv.writer(file)
+                for match in json["data"]:
+                    local_start_time = to_local_datetime(match["start_date"])
+                    match_id = match["id"]
+                    league = match["competition_name"]
+                    home_team = match["home_team"]
+                    away_team = match["away_team"]
+                    prediction = match["prediction"]
+                    prediction_odds = match.get("odds", {}).get(prediction)
+                    match_status = match["status"]
+                    match_result = match["result"]
 
-                local_start_time = to_local_datetime(match["start_date"])
-                match_id = match["id"]
-                league = match["competition_name"]
-                home_team = match["home_team"]
-                away_team = match["away_team"]
-                prediction = match["prediction"]
-                prediction_odds = match.get("odds", {}).get(prediction)
-                match_status = match["status"]
-                match_result = match["result"]
+                    writer.writerow([local_start_time, match_id, league, home_team, away_team, prediction, prediction_odds, match_status, match_result])
 
-
-                print(output.format(m_id=match_id, st=local_start_time, league=league,ht=home_team, at=away_team, p=prediction, odd=prediction_odds, m_stat=match_status, m_res=match_result))
+            print("Data appended to tmp_fix.csv successfully.")
         else:
             print("No data found in the response.")
     else:
