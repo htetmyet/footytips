@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     params = {
         "iso_date": today.isoformat(),
-        "federation": "UEFA",
+        #"federation": "UEFA",
         "market": "classic"
     }
 
@@ -44,15 +44,20 @@ if __name__ == "__main__":
             json["data"].sort(key=lambda p: p["start_date"])
 
             for match in json["data"]:
-                output = "{st}\t{ht} vs {at}\t{p} @ {odd}"
+                output = "{st} {m_id} {league}\t{ht} vs {at}\t{p} @ {odd} \t{m_stat} {m_res}"
 
                 local_start_time = to_local_datetime(match["start_date"])
+                match_id = match["id"]
+                league = match["competition_name"]
                 home_team = match["home_team"]
                 away_team = match["away_team"]
                 prediction = match["prediction"]
                 prediction_odds = match.get("odds", {}).get(prediction)
+                match_status = match["status"]
+                match_result = match["result"]
 
-                print(output.format(st=local_start_time, ht=home_team, at=away_team, p=prediction, odd=prediction_odds))
+
+                print(output.format(st=local_start_time, m_id=match_id, league=league,ht=home_team, at=away_team, p=prediction, odd=prediction_odds, m_stat=match_status, m_res=match_result))
         else:
             print("No data found in the response.")
     else:
