@@ -50,9 +50,9 @@ with open(input_file, mode='r', newline='') as infile:
             'now'
         ]
 
-        if odds_tips < 1.5:
+        if odds_tips < 1.5 and len(new_data_free_fix) < 5:
             new_data_free_fix.append(new_row)
-        else:
+        elif odds_tips >= 1.5 and len(new_data_pre_fix) < 5:
             new_data_pre_fix.append(new_row)
 
 # Read existing data from the output files if they exist
@@ -62,20 +62,20 @@ existing_data_pre_fix = []
 if os.path.exists(free_fix_file):
     with open(free_fix_file, mode='r', newline='') as outfile:
         reader = csv.reader(outfile)
-        for row in reader:
-            existing_data_free_fix.append(row)
+        next(reader)  # Skip header
+        existing_data_free_fix = list(reader)
 
 if os.path.exists(pre_fix_file):
     with open(pre_fix_file, mode='r', newline='') as outfile:
         reader = csv.reader(outfile)
-        for row in reader:
-            existing_data_pre_fix.append(row)
+        next(reader)  # Skip header
+        existing_data_pre_fix = list(reader)
 
 # Combine new data with existing data
 combined_data_free_fix = new_data_free_fix + existing_data_free_fix
 combined_data_pre_fix = new_data_pre_fix + existing_data_pre_fix
 
-# Write the combined data to the output files without headers
+# Write the combined data to the output files with headers
 with open(free_fix_file, mode='w', newline='') as outfile:
     writer = csv.writer(outfile)
     writer.writerows(combined_data_free_fix)
