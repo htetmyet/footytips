@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 import pytz
 import csv
 
-api_key = "2c85dc8beemsh376135f08c7b35fp13e565jsn14c0a12abfe2"  # Set your API key here
+from api_config import get_required_env, load_dotenv
+
+load_dotenv()
+api_key = get_required_env("RAPIDAPI_KEY")
 
 api_tz = pytz.timezone("Asia/Bangkok")
 local_tz = pytz.timezone("Asia/Bangkok")
