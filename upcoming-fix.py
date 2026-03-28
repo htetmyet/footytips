@@ -1,0 +1,173 @@
+import csv
+import http.client
+import json
+from datetime import datetime, timezone
+
+import pytz
+
+from api_config import get_required_env, load_dotenv
+
+load_dotenv()
+API_KEY = get_required_env("RAPIDAPI_KEY")
+API_HOST = "football-prediction-api.p.rapidapi.com"
+API_TZ = pytz.timezone("Asia/Bangkok")
+LOCAL_TZ = pytz.timezone("Asia/Bangkok")
+FREE_FIX_FILE = "free_fix.csv"
+PRE_FIX_FILE = "pre_fix.csv"
+
+
+def get_current_api_date():
+    return datetime.now(tz=timezone.utc).astimezone(API_TZ).strftime("%Y-%m-%d")
+
+
+def to_local_date(start_date):
+    dt = datetime.strptime(start_date[:10], "%Y-%m-%d")
+    return API_TZ.localize(dt).astimezone(LOCAL_TZ).date()
+
+
+def transform_tips(tip, home_team, away_team):
+    if tip == "1":
+        return f"{home_team} wins"
+    if tip == "2":
+        return f"{away_team} wins"
+    if tip == "12":
+        return "Any team to win"
+    if tip == "1X":
+        return f"{home_team} wins or draw"
+    if tip == "X":
+        return "Draw"
+    if tip == "X2":
+        return f"{away_team} wins or draw"
+    return tip
+
+
+def fetch_matches():
+    today = get_current_api_date()
+    headers = {
+        "User-Agent": "python_requests",
+        "x-rapidapi-key": API_KEY,
+        "x-rapidapi-host": API_HOST,
+    }
+
+    conn = http.client.HTTPSConnection(API_HOST)
+    params = f"/api/v2/predictions?market=classic&iso_date={today}"
+    conn.request("GET", params, headers=headers)
+    res = conn.getresponse()
+    data = res.read()
+
+    if res.status != 200:
+        raise RuntimeError(
+            f"Bad response from server, status-code: {res.status}, body: {data.decode('utf-8')}"
+        )
+
+    json_data = json.loads(data.decode("utf-8"))
+    matches = json_data.get("data", [])
+    matches.sort(key=lambda p: p["start_date"])
+    return matches
+
+
+def build_candidate_rows(matches):
+    tmp_like_rows = []
+    for match in matches:
+        local_start_date = to_local_date(match["start_date"])
+        match_id = match["id"]
+        league = match["competition_name"]
+        home_team = match["home_team"]
+        away_team = match["away_team"]
+        prediction = match["prediction"]
+        prediction_odds = match.get("odds", {}).get(prediction, "N/A")
+        match_status = match["status"]
+        match_result = match["result"]
+
+        tmp_like_rows.append(
+            [
+                local_start_date,
+                match_id,
+                league,
+                home_team,
+                away_team,
+                prediction,
+                prediction_odds,
+                match_status,
+                match_result,
+            ]
+        )
+
+    # Keep only rows where the 8th column (index 7) is pending.
+    return [row for row in tmp_like_rows if str(row[7]).lower() == "pending"]
+
+
+def split_for_outputs(rows):
+    new_data_free_fix = []
+    new_data_pre_fix = []
+
+    for row in rows:
+        if not row:
+            continue
+
+        time = row[0]
+        league_name = row[2]
+        home_team = row[3]
+        away_team = row[4]
+        tips = row[5]
+        try:
+            odds_tips = float(row[6])
+        except (ValueError, TypeError):
+            odds_tips = 0.0
+
+        new_row = [
+            time,
+            league_name,
+            f"{home_team} vs {away_team}",
+            "Predictions",
+            transform_tips(tips, home_team, away_team),
+            odds_tips,
+            "-",
+            "-",
+            "now",
+        ]
+
+        if odds_tips < 1.5 and len(new_data_free_fix) < 5:
+            new_data_free_fix.append(new_row)
+        elif odds_tips >= 1.5 and len(new_data_pre_fix) < 5:
+            new_data_pre_fix.append(new_row)
+
+    return new_data_free_fix, new_data_pre_fix
+
+
+def read_existing_rows(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, mode="r", newline="") as file:
+        return list(csv.reader(file))
+
+
+def write_rows(path, rows):
+    with open(path, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerows(rows)
+
+
+def main():
+    matches = fetch_matches()
+    print(f"Number of matches retrieved: {len(matches)}")
+    pending_rows = build_candidate_rows(matches)
+    print(f"Pending matches selected: {len(pending_rows)}")
+
+    new_data_free_fix, new_data_pre_fix = split_for_outputs(pending_rows)
+    existing_data_free_fix = read_existing_rows(FREE_FIX_FILE)
+    existing_data_pre_fix = read_existing_rows(PRE_FIX_FILE)
+
+    combined_data_free_fix = new_data_free_fix + existing_data_free_fix
+    combined_data_pre_fix = new_data_pre_fix + existing_data_pre_fix
+
+    write_rows(FREE_FIX_FILE, combined_data_free_fix)
+    write_rows(PRE_FIX_FILE, combined_data_pre_fix)
+
+    print(
+        f"Data transformed and appended to {FREE_FIX_FILE} and {PRE_FIX_FILE} successfully."
+    )
+
+
+if __name__ == "__main__":
+    main()
