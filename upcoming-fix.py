@@ -1,19 +1,23 @@
 import csv
 import http.client
 import json
+import os
 from datetime import datetime, timezone
-
-import pytz
+from zoneinfo import ZoneInfo
 
 from api_config import get_required_env, load_dotenv
 
 load_dotenv()
 API_KEY = get_required_env("RAPIDAPI_KEY")
 API_HOST = "football-prediction-api.p.rapidapi.com"
-API_TZ = pytz.timezone("Asia/Bangkok")
-LOCAL_TZ = pytz.timezone("Asia/Bangkok")
+API_TZ = ZoneInfo("Asia/Bangkok")
+LOCAL_TZ = ZoneInfo("Asia/Bangkok")
 FREE_FIX_FILE = "free_fix.csv"
 PRE_FIX_FILE = "pre_fix.csv"
+MAX_FIXTURES = 300
+PRUNE_COUNT = 100
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "127.0.0.1:11434")
+OLLAMA_MODEL = "gemini-3-flash-preview:cloud"
 
 
 def get_current_api_date():
@@ -22,7 +26,7 @@ def get_current_api_date():
 
 def to_local_date(start_date):
     dt = datetime.strptime(start_date[:10], "%Y-%m-%d")
-    return API_TZ.localize(dt).astimezone(LOCAL_TZ).date()
+    return dt.replace(tzinfo=API_TZ).astimezone(LOCAL_TZ).date()
 
 
 def transform_tips(tip, home_team, away_team):
@@ -148,6 +152,95 @@ def write_rows(path, rows):
         writer.writerows(rows)
 
 
+def ensure_row_len(row, min_len=9):
+    while len(row) < min_len:
+        row.append("")
+
+
+def fallback_summary(prediction_text):
+    return f"Upcoming fixture tip: {prediction_text}."
+
+
+def generate_summary_with_ollama(matchup, prediction_text):
+    prompt = (
+        "Write one short upcoming fixture summary in plain English. "
+        "Maximum 10 words. No markdown, no quotes.\n"
+        f"Fixture: {matchup}\n"
+        f"Prediction: {prediction_text}"
+    )
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json"}
+
+    conn = http.client.HTTPConnection(OLLAMA_HOST, timeout=20)
+    try:
+        conn.request("POST", "/api/generate", body=json.dumps(payload), headers=headers)
+        res = conn.getresponse()
+        data = res.read()
+    finally:
+        conn.close()
+
+    if res.status != 200:
+        raise RuntimeError(
+            f"Ollama summary request failed, status-code: {res.status}, body: {data.decode('utf-8', errors='ignore')}"
+        )
+
+    response = json.loads(data.decode("utf-8"))
+    summary = str(response.get("response", "")).strip()
+    if not summary:
+        raise RuntimeError("Ollama summary response was empty.")
+
+    return " ".join(summary.split())
+
+
+def apply_upcoming_summaries(rows, summary_cache):
+    updated_count = 0
+    for row in rows:
+        if not row:
+            continue
+
+        ensure_row_len(row, 9)
+        if str(row[8]).strip().lower() != "now":
+            continue
+
+        matchup = str(row[2]).strip()
+        prediction_text = str(row[4]).strip()
+        if not matchup or not prediction_text:
+            continue
+
+        cache_key = f"{matchup}|{prediction_text}"
+        if cache_key not in summary_cache:
+            try:
+                summary_cache[cache_key] = generate_summary_with_ollama(
+                    matchup, prediction_text
+                )
+            except Exception as exc:
+                summary_cache[cache_key] = fallback_summary(prediction_text)
+                print(
+                    f"Warning: using fallback summary for '{matchup}' due to Ollama error: {exc}"
+                )
+
+        row[3] = summary_cache[cache_key]
+        updated_count += 1
+
+    return updated_count
+
+
+def prune_oldest_rows_if_needed(free_rows, pre_rows):
+    if len(free_rows) >= MAX_FIXTURES and len(pre_rows) >= MAX_FIXTURES:
+        free_rows = free_rows[:-PRUNE_COUNT] if len(free_rows) > PRUNE_COUNT else []
+        pre_rows = pre_rows[:-PRUNE_COUNT] if len(pre_rows) > PRUNE_COUNT else []
+        print(
+            f"Pruned oldest {PRUNE_COUNT} fixtures from both files "
+            f"(totals now: {len(free_rows)} and {len(pre_rows)})."
+        )
+
+    return free_rows, pre_rows
+
+
 def main():
     matches = fetch_matches()
     print(f"Number of matches retrieved: {len(matches)}")
@@ -160,12 +253,21 @@ def main():
 
     combined_data_free_fix = new_data_free_fix + existing_data_free_fix
     combined_data_pre_fix = new_data_pre_fix + existing_data_pre_fix
+    combined_data_free_fix, combined_data_pre_fix = prune_oldest_rows_if_needed(
+        combined_data_free_fix, combined_data_pre_fix
+    )
+    summary_cache = {}
+    free_summaries = apply_upcoming_summaries(combined_data_free_fix, summary_cache)
+    pre_summaries = apply_upcoming_summaries(combined_data_pre_fix, summary_cache)
 
     write_rows(FREE_FIX_FILE, combined_data_free_fix)
     write_rows(PRE_FIX_FILE, combined_data_pre_fix)
 
     print(
         f"Data transformed and appended to {FREE_FIX_FILE} and {PRE_FIX_FILE} successfully."
+    )
+    print(
+        f"Upcoming fixture summaries updated: {FREE_FIX_FILE}={free_summaries}, {PRE_FIX_FILE}={pre_summaries}"
     )
 
 
