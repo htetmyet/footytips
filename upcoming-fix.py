@@ -248,6 +248,9 @@ def main():
     print(f"Pending matches selected: {len(pending_rows)}")
 
     new_data_free_fix, new_data_pre_fix = split_for_outputs(pending_rows)
+    summary_cache = {}
+    free_summaries = apply_upcoming_summaries(new_data_free_fix, summary_cache)
+    pre_summaries = apply_upcoming_summaries(new_data_pre_fix, summary_cache)
     existing_data_free_fix = read_existing_rows(FREE_FIX_FILE)
     existing_data_pre_fix = read_existing_rows(PRE_FIX_FILE)
 
@@ -256,9 +259,6 @@ def main():
     combined_data_free_fix, combined_data_pre_fix = prune_oldest_rows_if_needed(
         combined_data_free_fix, combined_data_pre_fix
     )
-    summary_cache = {}
-    free_summaries = apply_upcoming_summaries(combined_data_free_fix, summary_cache)
-    pre_summaries = apply_upcoming_summaries(combined_data_pre_fix, summary_cache)
 
     write_rows(FREE_FIX_FILE, combined_data_free_fix)
     write_rows(PRE_FIX_FILE, combined_data_pre_fix)
