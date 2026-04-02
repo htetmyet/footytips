@@ -163,8 +163,8 @@ def fallback_summary(prediction_text):
 
 def generate_summary_with_ollama(matchup, prediction_text):
     prompt = (
-        "Write one short upcoming fixture summary in plain English. "
-        "Maximum 10 words. No markdown, no quotes.\n"
+        "Write two or three short upcoming fixture summary in plain English in professional football tipster style."
+        "Maximum 25 to 30 words. No markdown, no quotes.\n"
         f"Fixture: {matchup}\n"
         f"Prediction: {prediction_text}"
     )
