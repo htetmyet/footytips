@@ -1,12 +1,15 @@
 import csv
 import http.client
 import json
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from api_config import get_required_env, load_dotenv
 
 load_dotenv()
 API_KEY = get_required_env("RAPIDAPI_KEY")
 API_HOST = "football-prediction-api.p.rapidapi.com"
+API_TZ = ZoneInfo("Asia/Bangkok")
 FREE_FIX_FILE = "free_fix.csv"
 PRE_FIX_FILE = "pre_fix.csv"
 MARKET = "classic"
@@ -59,6 +62,17 @@ def status_to_score(status):
     return None
 
 
+def get_current_api_date():
+    return datetime.now(tz=timezone.utc).astimezone(API_TZ).date()
+
+
+def parse_row_date(iso_date):
+    try:
+        return date.fromisoformat(iso_date)
+    except ValueError:
+        return None
+
+
 def find_api_match(row, predictions):
     row_date = row[0].strip()
     row_competition = row[1].strip()
@@ -83,48 +97,65 @@ def find_api_match(row, predictions):
     return None
 
 
-def update_file(path, cache):
+def update_file(path, cache, today):
     with open(path, mode="r", newline="") as file:
         rows = list(csv.reader(file))
 
     updated_count = 0
+    expired_count = 0
+    kept_rows = []
     for row in rows:
         if not row:
             continue
 
         ensure_row_len(row, 9)
         if row[8].strip().lower() != "now":
+            kept_rows.append(row)
             continue
 
         iso_date = row[0].strip()
+        row_date = parse_row_date(iso_date)
         predictions = fetch_predictions_by_date(iso_date, cache)
         item = find_api_match(row, predictions)
         if not item:
+            if row_date is not None and row_date < today:
+                expired_count += 1
+                continue
+            kept_rows.append(row)
             continue
 
         status = str(item.get("status", "")).strip().lower()
         score = status_to_score(status)
         if score is None:
+            if row_date is not None and row_date < today:
+                expired_count += 1
+                continue
+            kept_rows.append(row)
             continue
 
         row[6] = str(item.get("result", row[6]))
         row[7] = score
         row[8] = "old"
         updated_count += 1
+        kept_rows.append(row)
 
     with open(path, mode="w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerows(rows)
+        writer.writerows(kept_rows)
 
-    return updated_count
+    return updated_count, expired_count
 
 
 def main():
     cache = {}
-    free_updated = update_file(FREE_FIX_FILE, cache)
-    pre_updated = update_file(PRE_FIX_FILE, cache)
+    today = get_current_api_date()
+    free_updated, free_expired = update_file(FREE_FIX_FILE, cache, today)
+    pre_updated, pre_expired = update_file(PRE_FIX_FILE, cache, today)
     print(
-        f"Updated rows: {FREE_FIX_FILE}={free_updated}, {PRE_FIX_FILE}={pre_updated}"
+        "Updated rows: "
+        f"{FREE_FIX_FILE}={free_updated}, {PRE_FIX_FILE}={pre_updated}; "
+        "Expired rows removed: "
+        f"{FREE_FIX_FILE}={free_expired}, {PRE_FIX_FILE}={pre_expired}"
     )
 
 
