@@ -2,6 +2,8 @@ import csv
 import http.client
 import json
 import os
+import socket
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -18,6 +20,10 @@ MAX_FIXTURES = 300
 PRUNE_COUNT = 100
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "127.0.0.1:11434")
 OLLAMA_MODEL = "gemini-3-flash-preview:cloud"
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "45"))
+OLLAMA_MAX_RETRIES = max(1, int(os.getenv("OLLAMA_MAX_RETRIES", "2")))
+OLLAMA_RETRY_BACKOFF = float(os.getenv("OLLAMA_RETRY_BACKOFF", "1.5"))
+RAPIDAPI_TIMEOUT = int(os.getenv("RAPIDAPI_TIMEOUT", "30"))
 
 
 def get_current_api_date():
@@ -53,11 +59,18 @@ def fetch_matches():
         "x-rapidapi-host": API_HOST,
     }
 
-    conn = http.client.HTTPSConnection(API_HOST)
+    conn = http.client.HTTPSConnection(API_HOST, timeout=RAPIDAPI_TIMEOUT)
     params = f"/api/v2/predictions?market=classic&iso_date={today}"
-    conn.request("GET", params, headers=headers)
-    res = conn.getresponse()
-    data = res.read()
+    try:
+        conn.request("GET", params, headers=headers)
+        res = conn.getresponse()
+        data = res.read()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to fetch matches from RapidAPI (host={API_HOST}, timeout={RAPIDAPI_TIMEOUT}s): {exc}"
+        ) from exc
+    finally:
+        conn.close()
 
     if res.status != 200:
         raise RuntimeError(
@@ -161,6 +174,34 @@ def fallback_summary(prediction_text):
     return f"Upcoming fixture tip: {prediction_text}."
 
 
+def is_connectivity_or_timeout_error(exc):
+    if isinstance(
+        exc,
+        (
+            socket.timeout,
+            TimeoutError,
+            ConnectionError,
+            OSError,
+            http.client.HTTPException,
+        ),
+    ):
+        return True
+
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "timed out",
+            "timeout",
+            "connection refused",
+            "temporarily unavailable",
+            "name or service not known",
+            "failed to establish a new connection",
+            "remote end closed connection",
+        )
+    )
+
+
 def generate_summary_with_ollama(matchup, prediction_text):
     prompt = (
         "Write two or three short upcoming fixture summary in plain English in professional football tipster style."
@@ -175,29 +216,51 @@ def generate_summary_with_ollama(matchup, prediction_text):
     }
     headers = {"Content-Type": "application/json"}
 
-    conn = http.client.HTTPConnection(OLLAMA_HOST, timeout=20)
-    try:
-        conn.request("POST", "/api/generate", body=json.dumps(payload), headers=headers)
-        res = conn.getresponse()
-        data = res.read()
-    finally:
-        conn.close()
+    last_exc = None
+    for attempt in range(1, OLLAMA_MAX_RETRIES + 1):
+        conn = http.client.HTTPConnection(OLLAMA_HOST, timeout=OLLAMA_TIMEOUT)
+        try:
+            conn.request("POST", "/api/generate", body=json.dumps(payload), headers=headers)
+            res = conn.getresponse()
+            data = res.read()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < OLLAMA_MAX_RETRIES:
+                time.sleep(OLLAMA_RETRY_BACKOFF * attempt)
+                continue
+            raise RuntimeError(
+                f"Ollama request failed after {OLLAMA_MAX_RETRIES} attempt(s): {exc}"
+            ) from exc
+        finally:
+            conn.close()
 
-    if res.status != 200:
-        raise RuntimeError(
-            f"Ollama summary request failed, status-code: {res.status}, body: {data.decode('utf-8', errors='ignore')}"
-        )
+        if res.status != 200:
+            err = RuntimeError(
+                "Ollama summary request failed, "
+                f"status-code: {res.status}, body: {data.decode('utf-8', errors='ignore')}"
+            )
+            last_exc = err
+            if attempt < OLLAMA_MAX_RETRIES and res.status >= 500:
+                time.sleep(OLLAMA_RETRY_BACKOFF * attempt)
+                continue
+            raise err
 
-    response = json.loads(data.decode("utf-8"))
-    summary = str(response.get("response", "")).strip()
-    if not summary:
-        raise RuntimeError("Ollama summary response was empty.")
+        response = json.loads(data.decode("utf-8"))
+        summary = str(response.get("response", "")).strip()
+        if not summary:
+            raise RuntimeError("Ollama summary response was empty.")
 
-    return " ".join(summary.split())
+        return " ".join(summary.split())
+
+    raise RuntimeError(
+        f"Ollama request failed after {OLLAMA_MAX_RETRIES} attempt(s): {last_exc}"
+    )
 
 
 def apply_upcoming_summaries(rows, summary_cache):
     updated_count = 0
+    disable_ollama_for_run = False
+
     for row in rows:
         if not row:
             continue
@@ -213,15 +276,24 @@ def apply_upcoming_summaries(rows, summary_cache):
 
         cache_key = f"{matchup}|{prediction_text}"
         if cache_key not in summary_cache:
-            try:
-                summary_cache[cache_key] = generate_summary_with_ollama(
-                    matchup, prediction_text
-                )
-            except Exception as exc:
+            if disable_ollama_for_run:
                 summary_cache[cache_key] = fallback_summary(prediction_text)
-                print(
-                    f"Warning: using fallback summary for '{matchup}' due to Ollama error: {exc}"
-                )
+            else:
+                try:
+                    summary_cache[cache_key] = generate_summary_with_ollama(
+                        matchup, prediction_text
+                    )
+                except Exception as exc:
+                    summary_cache[cache_key] = fallback_summary(prediction_text)
+                    if is_connectivity_or_timeout_error(exc):
+                        disable_ollama_for_run = True
+                        print(
+                            "Warning: Ollama connectivity issue detected; "
+                            "using fallback summaries for remaining fixtures in this run."
+                        )
+                    print(
+                        f"Warning: using fallback summary for '{matchup}' due to Ollama error: {exc}"
+                    )
 
         row[3] = summary_cache[cache_key]
         updated_count += 1
