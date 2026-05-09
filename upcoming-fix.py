@@ -2,6 +2,7 @@ import csv
 import http.client
 import json
 import os
+import random
 import socket
 import time
 from datetime import datetime, timezone
@@ -19,7 +20,8 @@ PRE_FIX_FILE = "pre_fix.csv"
 MAX_FIXTURES = 300
 PRUNE_COUNT = 100
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "127.0.0.1:11434")
-OLLAMA_MODEL = "gemini-3-flash-preview:cloud"
+OLLAMA_MODEL_FREE = os.getenv("OLLAMA_MODEL_FREE", "gemini-3-flash-preview:cloud")
+OLLAMA_MODEL_PREMIUM = os.getenv("OLLAMA_MODEL_PREMIUM", "gemma4:31b-cloud")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "45"))
 OLLAMA_MAX_RETRIES = max(1, int(os.getenv("OLLAMA_MAX_RETRIES", "2")))
 OLLAMA_RETRY_BACKOFF = float(os.getenv("OLLAMA_RETRY_BACKOFF", "1.5"))
@@ -116,7 +118,8 @@ def build_candidate_rows(matches):
 
 def split_for_outputs(rows):
     new_data_free_fix = []
-    new_data_pre_fix = []
+    premium_candidates_ge_2 = []
+    premium_candidates_ge_15 = []
 
     for row in rows:
         if not row:
@@ -146,8 +149,21 @@ def split_for_outputs(rows):
 
         if odds_tips < 1.5 and len(new_data_free_fix) < 5:
             new_data_free_fix.append(new_row)
-        elif odds_tips >= 1.5 and len(new_data_pre_fix) < 5:
-            new_data_pre_fix.append(new_row)
+        elif odds_tips >= 2.0:
+            premium_candidates_ge_2.append(new_row)
+            premium_candidates_ge_15.append(new_row)
+        elif odds_tips >= 1.5:
+            premium_candidates_ge_15.append(new_row)
+
+    if premium_candidates_ge_2:
+        new_data_pre_fix = premium_candidates_ge_2[:5]
+    else:
+        sample_size = min(5, len(premium_candidates_ge_15))
+        new_data_pre_fix = (
+            random.sample(premium_candidates_ge_15, sample_size)
+            if sample_size > 0
+            else []
+        )
 
     return new_data_free_fix, new_data_pre_fix
 
@@ -202,15 +218,15 @@ def is_connectivity_or_timeout_error(exc):
     )
 
 
-def generate_summary_with_ollama(matchup, prediction_text):
+def generate_summary_with_ollama(matchup, prediction_text, model_name):
     prompt = (
-        "Write two or three short upcoming fixture summary in plain English in professional football tipster style."
-        "Maximum 25 to 30 words. No markdown, no quotes.\n"
+        "Write two short upcoming fixture summary in plain English in professional football tipster style."
+        "Maximum 15 to 20  words. No markdown, no quotes.\n"
         f"Fixture: {matchup}\n"
         f"Prediction: {prediction_text}"
     )
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model_name,
         "prompt": prompt,
         "stream": False,
     }
@@ -257,7 +273,7 @@ def generate_summary_with_ollama(matchup, prediction_text):
     )
 
 
-def apply_upcoming_summaries(rows, summary_cache):
+def apply_upcoming_summaries(rows, summary_cache, model_name):
     updated_count = 0
     disable_ollama_for_run = False
 
@@ -274,14 +290,14 @@ def apply_upcoming_summaries(rows, summary_cache):
         if not matchup or not prediction_text:
             continue
 
-        cache_key = f"{matchup}|{prediction_text}"
+        cache_key = f"{model_name}|{matchup}|{prediction_text}"
         if cache_key not in summary_cache:
             if disable_ollama_for_run:
                 summary_cache[cache_key] = fallback_summary(prediction_text)
             else:
                 try:
                     summary_cache[cache_key] = generate_summary_with_ollama(
-                        matchup, prediction_text
+                        matchup, prediction_text, model_name
                     )
                 except Exception as exc:
                     summary_cache[cache_key] = fallback_summary(prediction_text)
@@ -321,8 +337,12 @@ def main():
 
     new_data_free_fix, new_data_pre_fix = split_for_outputs(pending_rows)
     summary_cache = {}
-    free_summaries = apply_upcoming_summaries(new_data_free_fix, summary_cache)
-    pre_summaries = apply_upcoming_summaries(new_data_pre_fix, summary_cache)
+    free_summaries = apply_upcoming_summaries(
+        new_data_free_fix, summary_cache, OLLAMA_MODEL_FREE
+    )
+    pre_summaries = apply_upcoming_summaries(
+        new_data_pre_fix, summary_cache, OLLAMA_MODEL_PREMIUM
+    )
     existing_data_free_fix = read_existing_rows(FREE_FIX_FILE)
     existing_data_pre_fix = read_existing_rows(PRE_FIX_FILE)
 
