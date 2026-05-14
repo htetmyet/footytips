@@ -2,6 +2,7 @@ import os
 import io
 import csv
 import glob
+import re
 import requests
 
 # =========================================================
@@ -16,6 +17,37 @@ HF_JSON_URL = (
 GIST_API = "https://api.github.com/gists/{}"
 
 OUTPUT_FILENAME = "get-predict.csv"
+
+
+def split_match_teams(match_value):
+
+    if not match_value:
+        return "", ""
+
+    parts = re.split(r"\s+vs\s+", match_value, maxsplit=1, flags=re.IGNORECASE)
+
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+
+    compact_parts = re.split(r"vs", match_value, maxsplit=1, flags=re.IGNORECASE)
+
+    if len(compact_parts) == 2:
+        return compact_parts[0].strip(), compact_parts[1].strip()
+
+    return "", ""
+
+
+def map_csv_status_to_evaluation(status_value):
+
+    value = (status_value or "").strip()
+
+    mapping = {
+        "-": "pending",
+        "1": "win",
+        "0": "loss"
+    }
+
+    return mapping.get(value, "")
 
 
 # =========================================================
@@ -104,23 +136,27 @@ def fetch_csv_files():
                 reader = csv.reader(f)
 
                 for row in reader:
+                    match_value = row[2] if len(row) > 2 else ""
+                    team, opponent = split_match_teams(match_value)
+                    result_value = row[6] if len(row) > 6 else ""
+                    status_value = row[7] if len(row) > 7 else ""
 
                     rows.append({
                         "source": "github_csv",
                         "id": "",
                         "date": row[0] if len(row) > 0 else "",
                         "league": row[1] if len(row) > 1 else "",
-                        "match": row[2] if len(row) > 2 else "",
-                        "team": "",
-                        "opponent": "",
+                        "match": match_value,
+                        "team": team,
+                        "opponent": opponent,
                         "predicted": "",
                         "tips": row[4] if len(row) > 4 else "",
                         "odds": row[5] if len(row) > 5 else "",
-                        "actualResult": "",
-                        "evaluationStatus": "",
+                        "actualResult": result_value,
+                        "evaluationStatus": map_csv_status_to_evaluation(status_value),
                         "analysis": row[3] if len(row) > 3 else "",
-                        "result": row[6] if len(row) > 6 else "",
-                        "status": row[7] if len(row) > 7 else "",
+                        "result": "",
+                        "status": status_value,
                         "type": row[8] if len(row) > 8 else "",
                         "notes": "",
                         "addedAt": "",
