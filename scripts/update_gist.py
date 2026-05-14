@@ -50,6 +50,16 @@ def map_csv_status_to_evaluation(status_value):
     return mapping.get(value, "")
 
 
+def normalize_csv_date(date_value):
+
+    value = (date_value or "").strip()
+
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return value.replace("-", "/")
+
+    return value
+
+
 # =========================================================
 # FETCH HUGGINGFACE JSON
 # =========================================================
@@ -140,11 +150,12 @@ def fetch_csv_files():
                     team, opponent = split_match_teams(match_value)
                     result_value = row[6] if len(row) > 6 else ""
                     status_value = row[7] if len(row) > 7 else ""
+                    date_value = row[0] if len(row) > 0 else ""
 
                     rows.append({
                         "source": "github_csv",
                         "id": "",
-                        "date": row[0] if len(row) > 0 else "",
+                        "date": normalize_csv_date(date_value),
                         "league": row[1] if len(row) > 1 else "",
                         "match": match_value,
                         "team": team,
