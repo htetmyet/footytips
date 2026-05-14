@@ -312,7 +312,7 @@ def main():
     old_rows = []
 
     for row in merged_rows:
-        if (row.get("evaluationStatus") or "").strip().lower() == "pending":
+        if (row.get("evaluationStatus") or "").strip().lower() == "pending": || if (row.get("type") or "").strip().lower() == "old":
             pending_rows.append(row)
         else:
             old_rows.append(row)
