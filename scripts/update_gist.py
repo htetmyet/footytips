@@ -26,7 +26,21 @@ def fetch_huggingface_json():
 
     print("Fetching HuggingFace JSON...")
 
-    response = requests.get(HF_JSON_URL, timeout=30)
+    hf_token = os.environ.get("HF_TOKEN")
+
+    headers = {}
+
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    response = requests.get(
+        HF_JSON_URL,
+        headers=headers,
+        timeout=30
+    )
+
+    print("HF status:", response.status_code)
+
     response.raise_for_status()
 
     data = response.json()
