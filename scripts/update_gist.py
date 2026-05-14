@@ -130,7 +130,7 @@ def fetch_csv_files():
 
     print("Loading local CSV files...")
 
-    csv_files = glob.glob("*.csv")
+    csv_files = glob.glob("pre_fix.csv")
 
     print(f"CSV files found: {len(csv_files)}")
 
