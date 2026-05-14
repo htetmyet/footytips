@@ -26,4 +26,5 @@ jobs:
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python scripts/update_gist.py
