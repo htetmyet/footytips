@@ -17,6 +17,7 @@ HF_JSON_URL = (
 GIST_API = "https://api.github.com/gists/{}"
 
 OUTPUT_FILENAME = "get-predict.csv"
+OLD_OUTPUT_FILENAME = "old-predict.csv"
 
 
 def split_match_teams(match_value):
@@ -250,16 +251,15 @@ def rows_to_csv(rows):
 # UPDATE GIST
 # =========================================================
 
-def update_gist(content):
+def update_gist(gist_id, output_filename, content):
 
     gist_token = os.environ.get("GIST_TOKEN")
-    gist_id = os.environ.get("GIST_ID")
 
     if not gist_token:
         raise Exception("Missing GIST_TOKEN")
 
     if not gist_id:
-        raise Exception("Missing GIST_ID")
+        raise Exception("Missing gist id")
 
     print("Updating gist...")
 
@@ -267,7 +267,7 @@ def update_gist(content):
 
     payload = {
         "files": {
-            OUTPUT_FILENAME: {
+            output_filename: {
                 "content": content
             }
         }
@@ -308,9 +308,29 @@ def main():
 
     merged_rows = merge_rows(json_rows, csv_rows)
 
-    csv_content = rows_to_csv(merged_rows)
+    pending_rows = []
+    old_rows = []
 
-    update_gist(csv_content)
+    for row in merged_rows:
+        if (row.get("evaluationStatus") or "").strip().lower() == "pending":
+            pending_rows.append(row)
+        else:
+            old_rows.append(row)
+
+    gist_id = os.environ.get("GIST_ID")
+    gist_old_id = os.environ.get("GIST_OLD")
+
+    if not gist_id:
+        raise Exception("Missing GIST_ID")
+
+    if not gist_old_id:
+        raise Exception("Missing GIST_OLD")
+
+    pending_csv_content = rows_to_csv(pending_rows)
+    old_csv_content = rows_to_csv(old_rows)
+
+    update_gist(gist_id, OUTPUT_FILENAME, pending_csv_content)
+    update_gist(gist_old_id, OLD_OUTPUT_FILENAME, old_csv_content)
 
     print("DONE")
 
