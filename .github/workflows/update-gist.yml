@@ -3,7 +3,7 @@ name: Update Gist
 on:
   schedule:
     # GitHub Actions cron uses UTC. 13:20 UTC = 20:20 Asia/Bangkok.
-    - cron: '45 13 * * *'
+    - cron: '50 13 * * *'
 
   workflow_dispatch:
 
