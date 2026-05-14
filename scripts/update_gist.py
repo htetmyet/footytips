@@ -312,7 +312,10 @@ def main():
     old_rows = []
 
     for row in merged_rows:
-        if (row.get("evaluationStatus") or "").strip().lower() == "pending":
+        row_type = (row.get("type") or "").strip().lower()
+        if row.get("source") == "github_csv" and row_type == "old":
+            old_rows.append(row)
+        elif (row.get("evaluationStatus") or "").strip().lower() == "pending":
             pending_rows.append(row)
         else:
             old_rows.append(row)
