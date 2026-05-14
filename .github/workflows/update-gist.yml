@@ -2,9 +2,15 @@ name: Update Gist
 
 on:
   workflow_dispatch:
-  schedule:
+    inputs:
+      trigger_source:
+        description: "Who triggered this workflow"
+        required: false
+        default: "manual"
+        
+  #schedule:
     # GitHub Actions cron uses UTC. 13:20 UTC = 20:20 Asia/Bangkok.
-    - cron: '30 14 * * *'
+    # - cron: '30 14 * * *'
 
 
 jobs:
