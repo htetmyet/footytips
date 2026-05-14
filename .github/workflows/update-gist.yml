@@ -18,8 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show trigger source
-        run: echo "Triggered from: ${{ github.event.inputs.trigger_source }}"
+      - run: echo "Triggered from ${{ github.event.inputs.trigger_source }}"
         
       - name: Checkout repo
         uses: actions/checkout@v5
