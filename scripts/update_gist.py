@@ -1,0 +1,262 @@
+import os
+import io
+import csv
+import glob
+import requests
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+HF_JSON_URL = (
+    "https://huggingface.co/datasets/"
+    "htetmyet/correct_score/resolve/main/tips/latest.json"
+)
+
+GIST_API = "https://api.github.com/gists/{}"
+
+OUTPUT_FILENAME = "get-predict.csv"
+
+
+# =========================================================
+# FETCH HUGGINGFACE JSON
+# =========================================================
+
+def fetch_huggingface_json():
+
+    print("Fetching HuggingFace JSON...")
+
+    response = requests.get(HF_JSON_URL, timeout=30)
+    response.raise_for_status()
+
+    data = response.json()
+
+    items = data.get("items", [])
+
+    rows = []
+
+    for item in items:
+
+        rows.append({
+            "source": "huggingface",
+            "id": item.get("id", ""),
+            "date": item.get("date", ""),
+            "league": item.get("div", ""),
+            "match": f"{item.get('team', '')} vs {item.get('opponent', '')}",
+            "team": item.get("team", ""),
+            "opponent": item.get("opponent", ""),
+            "predicted": item.get("predicted", ""),
+            "tips": item.get("tips", ""),
+            "odds": item.get("odds", ""),
+            "actualResult": item.get("actualResult", ""),
+            "evaluationStatus": item.get("evaluationStatus", ""),
+            "analysis": "",
+            "result": "",
+            "status": "",
+            "type": "",
+            "notes": item.get("notes", ""),
+            "addedAt": item.get("addedAt", ""),
+            "sourceFileName": item.get("sourceFileName", ""),
+            "csvFile": ""
+        })
+
+    print(f"HuggingFace rows: {len(rows)}")
+
+    return rows
+
+
+# =========================================================
+# FETCH CSV FILES FROM REPO
+# =========================================================
+
+def fetch_csv_files():
+
+    print("Loading local CSV files...")
+
+    csv_files = glob.glob("*.csv")
+
+    print(f"CSV files found: {len(csv_files)}")
+
+    rows = []
+
+    for file_path in csv_files:
+
+        print(f"Reading: {file_path}")
+
+        try:
+
+            with open(file_path, "r", encoding="utf-8") as f:
+
+                reader = csv.reader(f)
+
+                for row in reader:
+
+                    rows.append({
+                        "source": "github_csv",
+                        "id": "",
+                        "date": row[0] if len(row) > 0 else "",
+                        "league": row[1] if len(row) > 1 else "",
+                        "match": row[2] if len(row) > 2 else "",
+                        "team": "",
+                        "opponent": "",
+                        "predicted": "",
+                        "tips": row[4] if len(row) > 4 else "",
+                        "odds": row[5] if len(row) > 5 else "",
+                        "actualResult": "",
+                        "evaluationStatus": "",
+                        "analysis": row[3] if len(row) > 3 else "",
+                        "result": row[6] if len(row) > 6 else "",
+                        "status": row[7] if len(row) > 7 else "",
+                        "type": row[8] if len(row) > 8 else "",
+                        "notes": "",
+                        "addedAt": "",
+                        "sourceFileName": "",
+                        "csvFile": file_path
+                    })
+
+        except Exception as e:
+
+            print(f"FAILED: {file_path}")
+            print(e)
+
+    print(f"CSV rows: {len(rows)}")
+
+    return rows
+
+
+# =========================================================
+# MERGE
+# =========================================================
+
+def merge_rows(json_rows, csv_rows):
+
+    merged = []
+
+    merged.extend(json_rows)
+    merged.extend(csv_rows)
+
+    print(f"Merged rows: {len(merged)}")
+
+    return merged
+
+
+# =========================================================
+# CONVERT TO CSV
+# =========================================================
+
+def rows_to_csv(rows):
+
+    headers = [
+        "source",
+        "id",
+        "date",
+        "league",
+        "match",
+        "team",
+        "opponent",
+        "predicted",
+        "tips",
+        "odds",
+        "actualResult",
+        "evaluationStatus",
+        "analysis",
+        "result",
+        "status",
+        "type",
+        "notes",
+        "addedAt",
+        "sourceFileName",
+        "csvFile"
+    ]
+
+    output = io.StringIO()
+
+    writer = csv.DictWriter(
+        output,
+        fieldnames=headers,
+        extrasaction="ignore"
+    )
+
+    writer.writeheader()
+
+    for row in rows:
+        writer.writerow(row)
+
+    return output.getvalue()
+
+
+# =========================================================
+# UPDATE GIST
+# =========================================================
+
+def update_gist(content):
+
+    gist_token = os.environ.get("GIST_TOKEN")
+    gist_id = os.environ.get("GIST_ID")
+
+    if not gist_token:
+        raise Exception("Missing GIST_TOKEN")
+
+    if not gist_id:
+        raise Exception("Missing GIST_ID")
+
+    print("Updating gist...")
+
+    url = GIST_API.format(gist_id)
+
+    payload = {
+        "files": {
+            OUTPUT_FILENAME: {
+                "content": content
+            }
+        }
+    }
+
+    headers = {
+        "Authorization": f"token {gist_token}",
+        "Accept": "application/vnd.github+json"
+    }
+
+    response = requests.patch(
+        url,
+        json=payload,
+        headers=headers,
+        timeout=30
+    )
+
+    print("GitHub response:", response.status_code)
+
+    if response.status_code >= 300:
+        print(response.text)
+        response.raise_for_status()
+
+    print("Gist updated successfully")
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    print("START")
+
+    json_rows = fetch_huggingface_json()
+
+    csv_rows = fetch_csv_files()
+
+    merged_rows = merge_rows(json_rows, csv_rows)
+
+    csv_content = rows_to_csv(merged_rows)
+
+    update_gist(csv_content)
+
+    print("DONE")
+
+
+# =========================================================
+# ENTRY
+# =========================================================
+
+if __name__ == "__main__":
+    main()
