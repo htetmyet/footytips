@@ -147,7 +147,7 @@ def split_for_outputs(rows):
             "now",
         ]
 
-        if odds_tips < 1.5 and len(new_data_free_fix) < 5:
+        if 1.3 < odds_tips < 1.9 and len(new_data_free_fix) < 5:
             new_data_free_fix.append(new_row)
         elif odds_tips >= 2.0:
             premium_candidates_ge_2.append(new_row)
