@@ -5,10 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
+sync_with_origin_main() {
+    git fetch origin main
+    git rebase origin/main
+}
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
     PYTHON_BIN="python"
 fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Syncing branch with origin/main"
+sync_with_origin_main
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running results-fix.py"
 "${PYTHON_BIN}" results-fix.py
@@ -37,7 +45,16 @@ if [[ "${free_changed}" -eq 1 && "${pre_changed}" -eq 1 ]]; then
     fi
 
     git commit -m "${commit_message}"
-    git push
+
+    # Re-sync before push in case remote moved while scripts were running.
+    sync_with_origin_main
+
+    if ! git push origin main; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Push failed on first attempt. Retrying after sync."
+        sync_with_origin_main
+        git push origin main
+    fi
+
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Committed and pushed: ${commit_message}"
 else
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Skip commit: both files did not change."
