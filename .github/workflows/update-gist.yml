@@ -37,6 +37,8 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
           GIST_OLD: ${{ secrets.GIST_OLD }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/update_gist.py
 
       - name: Notify Telegram
