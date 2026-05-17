@@ -4,6 +4,7 @@ import csv
 import glob
 import re
 import requests
+from datetime import datetime
 
 # =========================================================
 # CONFIG
@@ -294,6 +295,53 @@ def update_gist(gist_id, output_filename, content):
     print("Gist updated successfully")
 
 
+def format_prediction_preview(rows, limit=5):
+    preview_lines = []
+    for i, row in enumerate(rows[:limit], start=1):
+        league = (row.get("league") or "").strip()
+        match = (row.get("match") or "").strip()
+        tips = (row.get("tips") or "").strip()
+        odds = (row.get("odds") or "").strip()
+        preview_lines.append(f"{i}. {league} | {match} | Tips: {tips} | Odds: {odds}")
+    if not preview_lines:
+        return "No pending predictions found."
+    return "\n".join(preview_lines)
+
+
+def send_telegram_notification(pending_rows):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        print("Telegram secrets not configured, skipping notification.")
+        return
+
+    date_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    preview = format_prediction_preview(pending_rows, limit=5)
+    total = len(pending_rows)
+
+    text = (
+        "⚽ *Daily Football Predictions Ready!*\n"
+        f"📅 Date: {date_str}\n"
+        f"📊 Total predictions: {total}\n"
+        "\n"
+        "*Preview*:\n"
+        f"{preview}\n"
+    )
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    response = requests.post(url, json=payload, timeout=30)
+    print("Telegram response:", response.status_code)
+    if response.status_code >= 300:
+        print(response.text)
+        response.raise_for_status()
+
+
 # =========================================================
 # MAIN
 # =========================================================
@@ -334,6 +382,8 @@ def main():
 
     update_gist(gist_id, OUTPUT_FILENAME, pending_csv_content)
     update_gist(gist_old_id, OLD_OUTPUT_FILENAME, old_csv_content)
+
+    send_telegram_notification(pending_rows)
 
     print("DONE")
 
