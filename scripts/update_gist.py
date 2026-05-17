@@ -311,6 +311,7 @@ def format_prediction_preview(rows, limit=5):
 def send_telegram_notification(pending_rows):
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    print(f"Telegram token present: {bool(token)}; chat_id present: {bool(chat_id)}")
     if not token or not chat_id:
         print("Telegram secrets not configured, skipping notification.")
         return
@@ -335,11 +336,15 @@ def send_telegram_notification(pending_rows):
     }
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    response = requests.post(url, json=payload, timeout=30)
-    print("Telegram response:", response.status_code)
-    if response.status_code >= 300:
-        print(response.text)
-        response.raise_for_status()
+    try:
+        response = requests.post(url, json=payload, timeout=30)
+        print("Telegram response:", response.status_code)
+        print("Telegram body:", response.text)
+        if response.status_code >= 300:
+            response.raise_for_status()
+    except Exception as exc:
+        print("Telegram send failed:", exc)
+        raise
 
 
 # =========================================================
