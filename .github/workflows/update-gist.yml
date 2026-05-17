@@ -66,12 +66,11 @@ jobs:
 
           date_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
           text = (
-              f"⚽ *Daily Football Predictions Ready!*\n"
+              f"⚽ *Daily Premium Football Predictions Ready!*\n"
               f"📅 Date: {date_str}\n"
               f"🔔 Workflow: *{workflow}*\n"
               f"🏷️ Repo: *{repo}*\n"
               f"🧾 Trigger: {trigger}\n"
-              f"🔗 [View run](https://github.com/{repo}/actions/runs/{run_id})"
           )
 
           data = json.dumps({
