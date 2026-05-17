@@ -321,20 +321,20 @@ def send_telegram_notification(pending_rows):
     total = len(pending_rows)
 
     text = (
-        "⚽ *Daily Football Predictions Ready!*\n"
+        "⚽ Daily Football Predictions Ready!\n"
         f"📅 Date: {date_str}\n"
         f"📊 Total predictions: {total}\n"
         "\n"
-        "*Preview*:\n"
+        "Preview:\n"
         f"{preview}\n"
     )
 
     payload = {
         "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
+        "text": text
     }
 
+    print("Telegram text:\n", text)
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         response = requests.post(url, json=payload, timeout=30)
