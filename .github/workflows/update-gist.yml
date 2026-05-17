@@ -40,7 +40,6 @@ jobs:
         run: python scripts/update_gist.py
 
       - name: Notify Telegram
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -52,8 +51,12 @@ jobs:
           python - <<'PY'
           import os, urllib.request, json
 
-          token = os.environ['TELEGRAM_BOT_TOKEN']
-          chat_id = os.environ['TELEGRAM_CHAT_ID']
+          token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+          chat_id = os.environ.get('TELEGRAM_CHAT_ID', '')
+          if not token or not chat_id:
+              print('Telegram secrets not configured, skipping notification.')
+              raise SystemExit(0)
+
           workflow = os.environ['GITHUB_WORKFLOW']
           repo = os.environ['GITHUB_REPOSITORY']
           run_id = os.environ['GITHUB_RUN_ID']
