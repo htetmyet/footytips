@@ -335,6 +335,15 @@ def send_telegram_notification(pending_rows):
     }
 
     print("Telegram text:\n", text)
+
+    auth_url = f"https://api.telegram.org/bot{token}/getMe"
+    try:
+        auth_response = requests.get(auth_url, timeout=30)
+        print("Telegram auth response:", auth_response.status_code)
+        print("Telegram auth body:", auth_response.text)
+    except Exception as exc:
+        print("Telegram auth check failed:", exc)
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         response = requests.post(url, json=payload, timeout=30)
