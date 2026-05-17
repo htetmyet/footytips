@@ -38,3 +38,48 @@ jobs:
           GIST_OLD: ${{ secrets.GIST_OLD }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python scripts/update_gist.py
+
+      - name: Notify Telegram
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          TRIGGER_SOURCE: ${{ github.event.inputs.trigger_source }}
+        run: |
+          python - <<'PY'
+          import os, urllib.request, json
+
+          token = os.environ['TELEGRAM_BOT_TOKEN']
+          chat_id = os.environ['TELEGRAM_CHAT_ID']
+          workflow = os.environ['GITHUB_WORKFLOW']
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_id = os.environ['GITHUB_RUN_ID']
+          trigger = os.environ.get('TRIGGER_SOURCE', 'manual')
+
+          from datetime import datetime
+
+          date_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+          text = (
+              f"⚽ *Daily Football Predictions Ready!*\n"
+              f"📅 Date: {date_str}\n"
+              f"🔔 Workflow: *{workflow}*\n"
+              f"🏷️ Repo: *{repo}*\n"
+              f"🧾 Trigger: {trigger}\n"
+              f"🔗 [View run](https://github.com/{repo}/actions/runs/{run_id})"
+          )
+
+          data = json.dumps({
+              'chat_id': chat_id,
+              'text': text,
+              'parse_mode': 'Markdown'
+          }).encode('utf-8')
+
+          url = f'https://api.telegram.org/bot{token}/sendMessage'
+          req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+          with urllib.request.urlopen(req) as resp:
+              body = resp.read().decode('utf-8')
+          print(body)
+          PY
