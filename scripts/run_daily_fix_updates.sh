@@ -35,7 +35,7 @@ if [[ -n "$(git status --porcelain -- pre_fix.csv)" ]]; then
     pre_changed=1
 fi
 
-if [[ "${free_changed}" -eq 1 && "${pre_changed}" -eq 1 ]]; then
+if [[ "${free_changed}" -eq 1 || "${pre_changed}" -eq 1 ]]; then
     commit_message="$(date '+%Y-%m-%d')-new-fixs-updates"
     git add free_fix.csv pre_fix.csv
 
@@ -57,5 +57,5 @@ if [[ "${free_changed}" -eq 1 && "${pre_changed}" -eq 1 ]]; then
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Committed and pushed: ${commit_message}"
 else
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Skip commit: both files did not change."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Skip commit: no CSV changes found."
 fi
